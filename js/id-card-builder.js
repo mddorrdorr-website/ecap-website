@@ -1,12 +1,19 @@
 /* ECAP ID card builder — code lookup, live preview, canvas rendering, download + send.
    The uploaded photo is held only in a page-level JS variable (never localStorage,
-   never uploaded until the user explicitly presses "Send"), so nothing is persisted. */
+   never uploaded until the user explicitly presses "Send"), so nothing is persisted.
+
+   Photo position/zoom model: `photo.zoom` (1 = fitted/"cover", up to 3 = zoomed in)
+   and `photo.offX` / `photo.offY` (each -1..1, fraction of the max pan distance at
+   the current zoom). Because these three numbers are independent of pixel size,
+   the exact same crop reproduces correctly at any box size — the small on-card
+   circle, the big drag-to-position stage, and the final print-resolution canvas
+   all call computePhotoGeometry() with their own box size and get a matching result. */
 (function () {
   "use strict";
 
   var registration = null;   // the looked-up registration record
-  var photoDataUrl = null;   // in-memory only — never persisted
   var logoImg = null;        // cached <img> for canvas drawing
+  var photo = null;          // { img, dataUrl, naturalW, naturalH, zoom, offX, offY } — in-memory only
 
   function cssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -38,7 +45,6 @@
   var preCode = new URLSearchParams(window.location.search).get("code");
   if (preCode) {
     codeInput.value = preCode;
-    // Arrived straight from registration with a valid code — skip the extra click.
     var preRec = EcapRegistration.lookupCode(preCode);
     if (preRec) { registration = preRec; enterBuilder(); }
   }
@@ -77,23 +83,140 @@
     loadImage("assets/logos/ecap-logo.png").then(function (img) { logoImg = img; });
   }
 
+  // ---------- Photo geometry (shared by stage, card preview, and canvas) ----------
+  function computePhotoGeometry(state, box) {
+    var baseScale = Math.max(box / state.naturalW, box / state.naturalH);
+    var scale = baseScale * state.zoom;
+    var w = state.naturalW * scale, h = state.naturalH * scale;
+    var maxOffX = Math.max(0, (w - box) / 2);
+    var maxOffY = Math.max(0, (h - box) / 2);
+    return {
+      w: w, h: h,
+      left: (box - w) / 2 + state.offX * maxOffX,
+      top: (box - h) / 2 + state.offY * maxOffY,
+    };
+  }
+
+  function applyGeometryToImg(imgEl, state, box) {
+    var g = computePhotoGeometry(state, box);
+    imgEl.style.width = g.w + "px";
+    imgEl.style.height = g.h + "px";
+    imgEl.style.left = g.left + "px";
+    imgEl.style.top = g.top + "px";
+  }
+
+  var stage = document.getElementById("photoStage");
+  var stageImg = document.getElementById("stageImg");
+  var zoomSlider = document.getElementById("zoomSlider");
+  var photoDropZone = document.getElementById("photoDropZone");
+  var photoEditor = document.getElementById("photoEditor");
+
+  function renderStage() {
+    if (!photo) return;
+    stageImg.src = photo.dataUrl;
+    applyGeometryToImg(stageImg, photo, stage.clientWidth);
+  }
+
+  function renderCardPhoto() {
+    var preview = document.getElementById("photoPreview");
+    if (!photo) {
+      preview.innerHTML = "No photo";
+      return;
+    }
+    var img = preview.querySelector("img");
+    if (!img) {
+      preview.innerHTML = "";
+      img = document.createElement("img");
+      preview.appendChild(img);
+    }
+    img.src = photo.dataUrl;
+    var box = preview.clientWidth || 92;
+    applyGeometryToImg(img, photo, box);
+  }
+
+  function renderAll() { renderStage(); renderCardPhoto(); }
+
   // ---------- Photo upload (in-browser only) ----------
   document.getElementById("photoInput").addEventListener("change", function (e) {
     var file = e.target.files && e.target.files[0];
     if (!file) return;
     var reader = new FileReader();
     reader.onload = function (ev) {
-      photoDataUrl = ev.target.result; // kept only in memory for this page view
-      var preview = document.getElementById("photoPreview");
-      preview.textContent = "";
-      preview.style.background = "transparent";
-      var img = document.createElement("img");
-      img.src = photoDataUrl;
-      img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:50%;";
-      preview.appendChild(img);
+      var dataUrl = ev.target.result;
+      loadImage(dataUrl).then(function (img) {
+        photo = {
+          img: img, dataUrl: dataUrl,
+          naturalW: img.naturalWidth, naturalH: img.naturalHeight,
+          zoom: 1, offX: 0, offY: 0,
+        };
+        zoomSlider.value = 100;
+        photoDropZone.style.display = "none";
+        photoEditor.style.display = "block";
+        renderAll();
+      });
     };
     reader.readAsDataURL(file);
   });
+
+  document.getElementById("changePhotoBtn").addEventListener("click", function () {
+    document.getElementById("photoInput").click();
+  });
+
+  document.getElementById("removePhotoBtn").addEventListener("click", function () {
+    photo = null;
+    document.getElementById("photoInput").value = "";
+    photoEditor.style.display = "none";
+    photoDropZone.style.display = "block";
+    renderCardPhoto();
+  });
+
+  // ---------- Zoom ----------
+  zoomSlider.addEventListener("input", function () {
+    if (!photo) return;
+    photo.zoom = Number(zoomSlider.value) / 100; // 100–300 -> 1.0–3.0
+    renderAll();
+  });
+
+  // ---------- Drag to reposition (mouse + touch via Pointer Events) ----------
+  (function () {
+    var dragging = false;
+    var startX = 0, startY = 0, startOffX = 0, startOffY = 0;
+
+    stage.addEventListener("pointerdown", function (e) {
+      if (!photo) return;
+      dragging = true;
+      stage.classList.add("dragging");
+      stage.setPointerCapture(e.pointerId);
+      startX = e.clientX; startY = e.clientY;
+      startOffX = photo.offX; startOffY = photo.offY;
+    });
+
+    stage.addEventListener("pointermove", function (e) {
+      if (!dragging || !photo) return;
+      var box = stage.clientWidth;
+      var g = computePhotoGeometry(photo, box);
+      var maxOffX = Math.max(0, (g.w - box) / 2);
+      var maxOffY = Math.max(0, (g.h - box) / 2);
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      photo.offX = maxOffX > 0 ? clamp(startOffX + dx / maxOffX, -1, 1) : 0;
+      photo.offY = maxOffY > 0 ? clamp(startOffY + dy / maxOffY, -1, 1) : 0;
+      renderAll();
+    });
+
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      stage.classList.remove("dragging");
+      try { stage.releasePointerCapture(e.pointerId); } catch (err) { /* noop */ }
+    }
+    stage.addEventListener("pointerup", endDrag);
+    stage.addEventListener("pointercancel", endDrag);
+  })();
+
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  // Keep both previews correctly sized if the layout reflows (e.g. orientation change)
+  window.addEventListener("resize", function () { if (photo) renderAll(); });
 
   // ---------- Flip ----------
   document.getElementById("flipBtn").addEventListener("click", function () {
@@ -111,24 +234,9 @@
     ctx.closePath();
   }
 
-  function wrapText(ctx, text, cx, y, maxWidth, lineHeight) {
-    var words = text.split(" ");
-    var line = "";
-    var lines = [];
-    words.forEach(function (w) {
-      var test = line ? line + " " + w : w;
-      if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = w; }
-      else { line = test; }
-    });
-    if (line) lines.push(line);
-    lines.forEach(function (l, i) { ctx.fillText(l, cx, y + i * lineHeight); });
-    return lines.length;
-  }
-
   function drawFront(ctx, W, H) {
     var navy = cssVar("--navy") || "#09346d";
     var navyDeep = cssVar("--navy-deep") || "#072a5a";
-    var teal = cssVar("--teal-dark") || "#05828a";
     var fg = cssVar("--fg-muted") || "#566579";
 
     ctx.clearRect(0, 0, W, H);
@@ -136,7 +244,6 @@
     ctx.save(); ctx.clip();
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
 
-    // top band
     var bandH = 150;
     var grad = ctx.createLinearGradient(0, 0, W, bandH);
     grad.addColorStop(0, navy); grad.addColorStop(1, navyDeep);
@@ -148,14 +255,15 @@
     ctx.fillText("AFRICAN PROFESSIONALS", W / 2, 80);
 
     // photo circle
-    var r = 90, cx = W / 2, cy = bandH + 4;
+    var r = 90, cx = W / 2, cy = bandH + 4, box = r * 2;
     ctx.save();
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.closePath();
     ctx.fillStyle = "#ffffff"; ctx.fill();
     ctx.lineWidth = 8; ctx.strokeStyle = "#ffffff"; ctx.stroke();
     ctx.clip();
-    if (photoDataUrl) {
-      // fallback: draw synchronously only if already loaded via cached Image (handled by caller)
+    if (photo) {
+      var g = computePhotoGeometry(photo, box);
+      ctx.drawImage(photo.img, cx - box / 2 + g.left, cy - box / 2 + g.top, g.w, g.h);
     } else {
       ctx.fillStyle = "#eef6fc"; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
       ctx.fillStyle = fg; ctx.font = "13px 'Source Sans 3', sans-serif";
@@ -163,11 +271,9 @@
     }
     ctx.restore();
 
-    // name
     ctx.fillStyle = navy; ctx.font = "700 26px Lexend, sans-serif";
     ctx.fillText(registration.fullName || "Full Name", W / 2, cy + r + 46);
 
-    // details
     var rows = [
       ["Course code", registration.code],
       ["Nationality", registration.nationality || "—"],
@@ -221,26 +327,8 @@
     var canvas = document.getElementById("renderCanvas");
     var ctx = canvas.getContext("2d");
     var W = canvas.width, H = canvas.height;
-
-    var photoPromise = photoDataUrl ? loadImage(photoDataUrl) : Promise.resolve(null);
-    return photoPromise.then(function (photoImg) {
-      if (side === "front") {
-        drawFront(ctx, W, H);
-        if (photoImg) {
-          var r = 90, cx = W / 2, cy = 150 + 4;
-          ctx.save();
-          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
-          // cover-fit the photo into the circle
-          var scale = Math.max((r * 2) / photoImg.width, (r * 2) / photoImg.height);
-          var w = photoImg.width * scale, h = photoImg.height * scale;
-          ctx.drawImage(photoImg, cx - w / 2, cy - h / 2, w, h);
-          ctx.restore();
-        }
-      } else {
-        drawBack(ctx, W, H);
-      }
-      return canvas.toDataURL("image/png");
-    });
+    if (side === "front") drawFront(ctx, W, H); else drawBack(ctx, W, H);
+    return Promise.resolve(canvas.toDataURL("image/png"));
   }
 
   function downloadDataUrl(dataUrl, filename) {
