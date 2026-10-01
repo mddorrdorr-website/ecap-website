@@ -84,6 +84,12 @@
           </div>
 
           <div class="field">
+            <label for="cohort">Programme intake</label>
+            <select id="cohort" required></select>
+            <p class="hint">ECAP runs three cohorts a year — October (China), February (UK) and June (Ghana).</p>
+          </div>
+
+          <div class="field">
             <label>Core programmes <span style="font-weight:400;color:var(--fg-muted);">(included automatically)</span></label>
             <div id="coreCheckList"></div>
           </div>
@@ -155,6 +161,20 @@
       electiveMount.appendChild(row);
     });
 
+    // Cohort dropdown — three intakes a year, soonest one first
+    var cohortSelect = document.getElementById("cohort");
+    ECAP_COHORTS
+      .map(function (c) { return Object.assign({}, c, { year: ecapNextCohortYear(c.month) }); })
+      .sort(function (a, b) {
+        return new Date(a.year, a.month - 1) - new Date(b.year, b.month - 1);
+      })
+      .forEach(function (c) {
+        var opt = document.createElement("option");
+        opt.value = c.code + "|" + c.year;
+        opt.textContent = c.monthName + " " + c.year + " — " + c.country + " (" + c.code + ")";
+        cohortSelect.appendChild(opt);
+      });
+
     var form = document.getElementById("registerForm");
     form.addEventListener("submit", function (e) {
       e.preventDefault();
@@ -176,10 +196,14 @@
       var phone = document.getElementById("phone").value.trim();
       var nationality = document.getElementById("nationality").value.trim();
       var organisation = document.getElementById("organisation").value.trim();
+      var cohortParts = cohortSelect.value.split("|");
+      var cohortLocation = cohortParts[0], cohortYear = cohortParts[1];
+      var cohortLabel = cohortSelect.options[cohortSelect.selectedIndex].textContent;
 
       var record = {
         fullName: fullName, email: email, phone: phone,
         nationality: nationality, organisation: organisation,
+        cohortLocation: cohortLocation, cohortYear: cohortYear, cohortLabel: cohortLabel,
         core: ECAP_COURSES.filter(function (c) { return c.group === "core"; }).map(function (c) { return c.id; }),
         electives: electives
       };
@@ -198,6 +222,7 @@
       var body =
         "New ECAP registration\n\n" +
         "Course code: " + code + "\n" +
+        "Cohort: " + cohortLabel + "\n" +
         "Name: " + fullName + "\n" +
         "Email: " + email + "\n" +
         "Phone: " + phone + "\n" +

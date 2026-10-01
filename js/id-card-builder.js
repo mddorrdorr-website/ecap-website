@@ -70,6 +70,7 @@
     var electiveNames = courseTitles(registration.electives || []).join(", ") || "—";
     document.getElementById("detailsSummary").innerHTML =
       "<div><strong style='color:var(--navy);'>Name:</strong> " + registration.fullName + "</div>" +
+      "<div><strong style='color:var(--navy);'>Cohort:</strong> " + (registration.cohortLabel || "—") + "</div>" +
       "<div><strong style='color:var(--navy);'>Code:</strong> " + registration.code + "</div>" +
       "<div><strong style='color:var(--navy);'>Electives:</strong> " + electiveNames + "</div>";
 

@@ -47,3 +47,19 @@ const ECAP_COURSES = [
     summary: "Promote transparency, accountability and ethical leadership at the highest levels.",
     outline: ["Board governance structures", "Ethics & compliance frameworks", "Transparency & reporting", "Accountability systems"] },
 ];
+
+/* ECAP runs three cohorts a year. "month" is 1-indexed (Jan = 1). */
+const ECAP_COHORTS = [
+  { code: "CN", country: "China", month: 10, monthName: "October" },
+  { code: "UK", country: "United Kingdom", month: 2, monthName: "February" },
+  { code: "GH", country: "Ghana", month: 6, monthName: "June" },
+];
+
+/* The next calendar year this cohort's month will run in (this year if it
+   hasn't happened yet, otherwise next year). */
+function ecapNextCohortYear(month) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const monthNow = now.getMonth() + 1;
+  return month >= monthNow ? year : year + 1;
+}
