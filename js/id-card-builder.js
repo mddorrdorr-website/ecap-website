@@ -1,33 +1,28 @@
-/* ECAP ID card builder — code lookup, live preview, canvas rendering, download + send.
+/* ECAP ID card builder — code lookup, live preview, SVG rendering, download + send.
    The uploaded photo is held only in a page-level JS variable (never localStorage,
    never uploaded until the user explicitly presses "Send"), so nothing is persisted.
 
-   Photo position/zoom model: `photo.zoom` (1 = fitted/"cover", up to 3 = zoomed in)
-   and `photo.offX` / `photo.offY` (each -1..1, fraction of the max pan distance at
-   the current zoom). Because these three numbers are independent of pixel size,
-   the exact same crop reproduces correctly at any box size — the small on-card
-   circle, the big drag-to-position stage, and the final print-resolution canvas
-   all call computePhotoGeometry() with their own box size and get a matching result. */
+   Card artwork comes from ECAPCard (js/card-renderer.js) — the same renderer
+   used to produce the approved design. This file's job is only to: (1) run the
+   drag-to-reposition/zoom photo editor and flatten its result into a square
+   crop at the renderer's required size, and (2) feed participant + photo data
+   into ECAPCard.renderFront()/renderBack() for the live preview and into a
+   canvas for PNG export.
+
+   Photo position/zoom model: `photo.zoom` (1 = fitted/"cover", up to 3 = zoomed
+   in) and `photo.offX` / `photo.offY` (each -1..1, fraction of the max pan
+   distance at the current zoom). Because these three numbers are independent
+   of pixel size, the exact same crop reproduces correctly at any box size —
+   the big drag-to-position stage and the flattened crop fed to the renderer
+   both call computePhotoGeometry() with their own box size and match exactly. */
 (function () {
   "use strict";
 
   var registration = null;   // the looked-up registration record
-  var logoImg = null;        // cached <img> for canvas drawing
   var photo = null;          // { img, dataUrl, naturalW, naturalH, zoom, offX, offY } — in-memory only
+  var renderFrame = 0;       // rAF handle so dragging doesn't re-render on every pixel
 
-  function cssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  }
-
-  function loadImage(src) {
-    return new Promise(function (resolve, reject) {
-      var img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = function () { resolve(img); };
-      img.onerror = reject;
-      img.src = src;
-    });
-  }
+  var PHOTO_BOX = (window.ECAPCard ? ECAPCard.meta.photo.width : 336) * 2; // 672 — the renderer's working crop size
 
   function courseTitles(ids) {
     return ids
@@ -68,11 +63,6 @@
     builderStep.style.display = "block";
     builderStep.classList.add("in");
 
-    document.getElementById("previewName").textContent = registration.fullName;
-    document.getElementById("previewCode").textContent = registration.code;
-    document.getElementById("previewNat").textContent = registration.nationality || "—";
-    document.getElementById("previewOrg").textContent = registration.organisation || "—";
-
     var electiveNames = courseTitles(registration.electives || []).join(", ") || "—";
     document.getElementById("detailsSummary").innerHTML =
       "<div><strong style='color:var(--navy);'>Name:</strong> " + registration.fullName + "</div>" +
@@ -80,10 +70,10 @@
       "<div><strong style='color:var(--navy);'>Code:</strong> " + registration.code + "</div>" +
       "<div><strong style='color:var(--navy);'>Electives:</strong> " + electiveNames + "</div>";
 
-    loadImage("assets/logos/ecap-logo.png").then(function (img) { logoImg = img; });
+    renderCardPreview();
   }
 
-  // ---------- Photo geometry (shared by stage, card preview, and canvas) ----------
+  // ---------- Photo geometry (shared by the drag/zoom stage and the final crop) ----------
   function computePhotoGeometry(state, box) {
     var baseScale = Math.max(box / state.naturalW, box / state.naturalH);
     var scale = baseScale * state.zoom;
@@ -105,6 +95,59 @@
     imgEl.style.top = g.top + "px";
   }
 
+  // Flatten the current photo + crop state into a square JPEG at the
+  // renderer's working resolution (672x672 = 2x its 336px photo frame).
+  // This is the same approach as the original design's ui.js: pre-crop once
+  // so the renderer always receives an already-correct, already-square image.
+  function buildCroppedPhotoDataUrl() {
+    if (!photo) return "";
+    var canvas = document.createElement("canvas");
+    canvas.width = PHOTO_BOX; canvas.height = PHOTO_BOX;
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, PHOTO_BOX, PHOTO_BOX); // flattens transparency, matches renderer's own white-matte behaviour
+    var g = computePhotoGeometry(photo, PHOTO_BOX);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(photo.img, g.left, g.top, g.w, g.h);
+    return canvas.toDataURL("image/jpeg", 0.96);
+  }
+
+  function cardData() {
+    return {
+      fullName: registration.fullName,
+      courseCode: registration.code,
+      nationality: registration.nationality,
+      organisation: registration.organisation,
+      photoDataUrl: buildCroppedPhotoDataUrl(),
+    };
+  }
+
+  function renderCardPreview() {
+    var data = cardData();
+    var options = { logoDataUrl: window.ECAP_LOGO_DATA_URL };
+    document.getElementById("frontMount").innerHTML = ECAPCard.renderFront(data, options);
+    document.getElementById("backMount").innerHTML = ECAPCard.renderBack(data, options);
+
+    var warnings = ECAPCard.getLayoutWarnings(data, options);
+    var note = document.getElementById("layoutWarning");
+    note.textContent = warnings.join(" ");
+    note.style.display = warnings.length ? "block" : "none";
+  }
+
+  function scheduleRender() {
+    if (renderFrame) cancelAnimationFrame(renderFrame);
+    renderFrame = requestAnimationFrame(function () { renderFrame = 0; renderCardPreview(); });
+  }
+
+  function loadImage(src) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
   var stage = document.getElementById("photoStage");
   var stageImg = document.getElementById("stageImg");
   var zoomSlider = document.getElementById("zoomSlider");
@@ -116,25 +159,6 @@
     stageImg.src = photo.dataUrl;
     applyGeometryToImg(stageImg, photo, stage.clientWidth);
   }
-
-  function renderCardPhoto() {
-    var preview = document.getElementById("photoPreview");
-    if (!photo) {
-      preview.innerHTML = "No photo";
-      return;
-    }
-    var img = preview.querySelector("img");
-    if (!img) {
-      preview.innerHTML = "";
-      img = document.createElement("img");
-      preview.appendChild(img);
-    }
-    img.src = photo.dataUrl;
-    var box = preview.clientWidth || 92;
-    applyGeometryToImg(img, photo, box);
-  }
-
-  function renderAll() { renderStage(); renderCardPhoto(); }
 
   // ---------- Photo upload (in-browser only) ----------
   document.getElementById("photoInput").addEventListener("change", function (e) {
@@ -152,7 +176,8 @@
         zoomSlider.value = 100;
         photoDropZone.style.display = "none";
         photoEditor.style.display = "block";
-        renderAll();
+        renderStage();
+        renderCardPreview();
       });
     };
     reader.readAsDataURL(file);
@@ -167,14 +192,15 @@
     document.getElementById("photoInput").value = "";
     photoEditor.style.display = "none";
     photoDropZone.style.display = "block";
-    renderCardPhoto();
+    renderCardPreview();
   });
 
   // ---------- Zoom ----------
   zoomSlider.addEventListener("input", function () {
     if (!photo) return;
     photo.zoom = Number(zoomSlider.value) / 100; // 100–300 -> 1.0–3.0
-    renderAll();
+    renderStage();
+    scheduleRender();
   });
 
   // ---------- Drag to reposition (mouse + touch via Pointer Events) ----------
@@ -200,7 +226,8 @@
       var dx = e.clientX - startX, dy = e.clientY - startY;
       photo.offX = maxOffX > 0 ? clamp(startOffX + dx / maxOffX, -1, 1) : 0;
       photo.offY = maxOffY > 0 ? clamp(startOffY + dy / maxOffY, -1, 1) : 0;
-      renderAll();
+      renderStage();
+      scheduleRender();
     });
 
     function endDrag(e) {
@@ -215,120 +242,39 @@
 
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
-  // Keep both previews correctly sized if the layout reflows (e.g. orientation change)
-  window.addEventListener("resize", function () { if (photo) renderAll(); });
+  window.addEventListener("resize", function () { if (photo) renderStage(); });
 
   // ---------- Flip ----------
   document.getElementById("flipBtn").addEventListener("click", function () {
     document.getElementById("idCard").classList.toggle("flipped");
   });
 
-  // ---------- Canvas rendering ----------
-  function roundedRectPath(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  function drawFront(ctx, W, H) {
-    var navy = cssVar("--navy") || "#09346d";
-    var navyDeep = cssVar("--navy-deep") || "#072a5a";
-    var fg = cssVar("--fg-muted") || "#566579";
-
-    ctx.clearRect(0, 0, W, H);
-    roundedRectPath(ctx, 0, 0, W, H, 28);
-    ctx.save(); ctx.clip();
-    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
-
-    var bandH = 150;
-    var grad = ctx.createLinearGradient(0, 0, W, bandH);
-    grad.addColorStop(0, navy); grad.addColorStop(1, navyDeep);
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, bandH);
-
-    ctx.textAlign = "center"; ctx.fillStyle = "#ffffff";
-    ctx.font = "700 20px Lexend, sans-serif";
-    ctx.fillText("EXECUTIVE CENTRE FOR", W / 2, 54);
-    ctx.fillText("AFRICAN PROFESSIONALS", W / 2, 80);
-
-    // photo circle
-    var r = 90, cx = W / 2, cy = bandH + 4, box = r * 2;
-    ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.closePath();
-    ctx.fillStyle = "#ffffff"; ctx.fill();
-    ctx.lineWidth = 8; ctx.strokeStyle = "#ffffff"; ctx.stroke();
-    ctx.clip();
-    if (photo) {
-      var g = computePhotoGeometry(photo, box);
-      ctx.drawImage(photo.img, cx - box / 2 + g.left, cy - box / 2 + g.top, g.w, g.h);
-    } else {
-      ctx.fillStyle = "#eef6fc"; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-      ctx.fillStyle = fg; ctx.font = "13px 'Source Sans 3', sans-serif";
-      ctx.fillText("No photo", cx, cy + 4);
-    }
-    ctx.restore();
-
-    ctx.fillStyle = navy; ctx.font = "700 26px Lexend, sans-serif";
-    ctx.fillText(registration.fullName || "Full Name", W / 2, cy + r + 46);
-
-    var rows = [
-      ["Course code", registration.code],
-      ["Nationality", registration.nationality || "—"],
-      ["Organisation", registration.organisation || "—"],
-    ];
-    var detY = cy + r + 90;
-    ctx.textAlign = "left"; ctx.font = "15px 'Source Sans 3', sans-serif";
-    rows.forEach(function (row, i) {
-      var y = detY + i * 46;
-      ctx.strokeStyle = "#dde7f1"; ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath(); ctx.moveTo(40, y - 22); ctx.lineTo(W - 40, y - 22); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = fg; ctx.fillText(row[0], 40, y);
-      ctx.fillStyle = navy; ctx.font = "700 15px Lexend, sans-serif";
-      ctx.textAlign = "right"; ctx.fillText(String(row[1]), W - 40, y);
-      ctx.textAlign = "left"; ctx.font = "15px 'Source Sans 3', sans-serif";
+  // ---------- PNG export (rasterise the renderer's SVG at 2x, same approach as the design source) ----------
+  function svgToPngDataUrl(svgString) {
+    return new Promise(function (resolve, reject) {
+      var blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var img = new Image();
+      img.onload = function () {
+        var canvas = document.createElement("canvas");
+        canvas.width = ECAPCard.meta.width * 2;
+        canvas.height = ECAPCard.meta.height * 2;
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("Could not rasterise card artwork.")); };
+      img.src = url;
     });
-
-    ctx.restore(); // clip
   }
 
-  function drawBack(ctx, W, H) {
-    var navy = cssVar("--navy") || "#09346d";
-    var navyDeep = cssVar("--navy-deep") || "#072a5a";
-
-    ctx.clearRect(0, 0, W, H);
-    roundedRectPath(ctx, 0, 0, W, H, 28);
-    ctx.save(); ctx.clip();
-    var grad = ctx.createLinearGradient(0, 0, W, H);
-    grad.addColorStop(0, navy); grad.addColorStop(1, navyDeep);
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
-
-    if (logoImg) {
-      var logoW = 220, logoH = logoW * (logoImg.height / logoImg.width);
-      var pad = 24;
-      roundedRectPath(ctx, W / 2 - logoW / 2 - pad, H / 2 - 160 - logoH / 2 - pad, logoW + pad * 2, logoH + pad * 2, 16);
-      ctx.fillStyle = "#ffffff"; ctx.fill();
-      ctx.drawImage(logoImg, W / 2 - logoW / 2, H / 2 - 160 - logoH / 2, logoW, logoH);
-    }
-
-    ctx.textAlign = "center"; ctx.fillStyle = "#ffffff";
-    ctx.font = "800 26px Lexend, sans-serif";
-    ctx.fillText("Building Our Africa", W / 2, H / 2 + 20);
-    ctx.fillText("Together.", W / 2, H / 2 + 56);
-
-    ctx.restore();
-  }
-
-  function renderSide(side) {
-    var canvas = document.getElementById("renderCanvas");
-    var ctx = canvas.getContext("2d");
-    var W = canvas.width, H = canvas.height;
-    if (side === "front") drawFront(ctx, W, H); else drawBack(ctx, W, H);
-    return Promise.resolve(canvas.toDataURL("image/png"));
+  function renderSidePng(side) {
+    // Flush any pending rAF crop so the export always matches what's on screen.
+    if (renderFrame) { cancelAnimationFrame(renderFrame); renderFrame = 0; renderCardPreview(); }
+    var data = cardData();
+    var options = { logoDataUrl: window.ECAP_LOGO_DATA_URL, idPrefix: "ecap-export-" + side };
+    var svg = side === "front" ? ECAPCard.renderFront(data, options) : ECAPCard.renderBack(data, options);
+    return svgToPngDataUrl(svg);
   }
 
   function downloadDataUrl(dataUrl, filename) {
@@ -339,7 +285,7 @@
 
   // ---------- Download ----------
   document.getElementById("downloadBtn").addEventListener("click", function () {
-    Promise.all([renderSide("front"), renderSide("back")]).then(function (res) {
+    Promise.all([renderSidePng("front"), renderSidePng("back")]).then(function (res) {
       downloadDataUrl(res[0], "ECAP-ID-" + registration.code + "-front.png");
       setTimeout(function () { downloadDataUrl(res[1], "ECAP-ID-" + registration.code + "-back.png"); }, 300);
     });
@@ -352,7 +298,7 @@
     status.style.color = "var(--fg-muted)";
     status.textContent = "Preparing your card…";
 
-    Promise.all([renderSide("front"), renderSide("back")]).then(function (res) {
+    Promise.all([renderSidePng("front"), renderSidePng("back")]).then(function (res) {
       var payload = {
         code: registration.code,
         fullName: registration.fullName,

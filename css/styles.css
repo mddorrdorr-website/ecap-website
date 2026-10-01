@@ -359,23 +359,12 @@ img { max-width: 100%; display: block; }
 .video-frame.placeholder{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--fg-on-dark-muted);}
 .video-frame.placeholder svg{width:40px;height:40px;}
 
-/* ID card builder */
-.id-card{width:100%;max-width:340px;aspect-ratio:54/85;border-radius:16px;position:relative;margin-inline:auto;perspective:1600px;}
+/* ID card builder — card faces render the ECAPCard SVG output directly;
+   these rules only handle the 3D flip mechanic and container framing. */
+.id-card{width:100%;max-width:340px;aspect-ratio:64/101;position:relative;margin-inline:auto;perspective:1600px;}
 .id-card-inner{position:relative;width:100%;height:100%;transition:transform .6s var(--ease);transform-style:preserve-3d;}
 .id-card.flipped .id-card-inner{transform:rotateY(180deg);}
-.id-card-face{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;overflow:hidden;box-shadow:var(--shadow-lg);background:#fff;display:flex;flex-direction:column;}
+.id-card-face{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;overflow:hidden;box-shadow:var(--shadow-lg);background:#fff;}
+.id-card-face svg{width:100%;height:100%;display:block;}
 .id-card-back{transform:rotateY(180deg);}
-.id-card-top{background:linear-gradient(135deg,var(--navy),var(--navy-deep));padding:14px 14px 10px;text-align:center;flex:none;}
-.id-card-top img{height:28px;width:auto;margin:0 auto 4px;}
-.id-card-top .org{color:#fff;font-family:'Lexend';font-weight:700;font-size:11px;letter-spacing:.02em;line-height:1.25;}
-.id-card-photo{width:92px;height:92px;border-radius:50%;border:4px solid #fff;margin:-30px auto 0;box-shadow:0 4px 10px rgba(0,0,0,.2);background:var(--sand);display:flex;align-items:center;justify-content:center;color:var(--fg-muted);font-size:11px;position:relative;overflow:hidden;flex:none;}
-.id-card-photo img{position:absolute;left:0;top:0;pointer-events:none;}
-.id-card-name{text-align:center;font-family:'Lexend';font-weight:700;font-size:16px;color:var(--navy);margin:10px 10px 0;line-height:1.2;}
-.id-card-details{padding:10px 16px 16px;margin-top:auto;font-size:11.5px;color:var(--fg-muted);}
-.id-card-details div{display:flex;justify-content:space-between;padding:4px 0;border-top:1px dashed var(--border);}
-.id-card-details div:first-child{border-top:none;}
-.id-card-details b{color:var(--navy);font-weight:600;}
-.id-card-back{align-items:center;justify-content:center;background:linear-gradient(160deg,var(--navy),var(--navy-deep));padding:20px;text-align:center;}
-.id-card-back img{width:84px;height:auto;margin:0 auto 14px;background:#fff;border-radius:12px;padding:10px;}
-.id-card-back .slogan{color:#fff;font-family:'Lexend';font-weight:800;font-size:15px;letter-spacing:.02em;}
 .code-box{font-family:'Lexend';font-weight:800;font-size:1.6rem;letter-spacing:.08em;color:var(--navy);background:var(--sand);border:2px dashed var(--teal);border-radius:12px;padding:16px 20px;text-align:center;}
