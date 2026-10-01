@@ -79,7 +79,7 @@
             </div>
             <div class="field">
               <label for="organisation">Organisation</label>
-              <input type="text" id="organisation" placeholder="Company / agency (optional)" />
+              <input type="text" id="organisation" required placeholder="Company / agency" />
             </div>
           </div>
 
@@ -179,6 +179,15 @@
     var form = document.getElementById("registerForm");
     form.addEventListener("submit", function (e) {
       e.preventDefault();
+
+      // The form uses novalidate (so we control the UX), but the Constraint
+      // Validation API still works when called explicitly — this blocks
+      // submission on any empty required field and shows the browser's
+      // native "please fill out this field" prompt on the first one.
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
 
       var electives = Array.prototype.slice
         .call(form.querySelectorAll('input[name="elective"]:checked'))
