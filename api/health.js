@@ -8,7 +8,7 @@
 const db = require("./_lib/db");
 
 function explain(status, info) {
-  if (status === 0) return "Could not reach the database at " + info.host + ". Check that this matches your Supabase project's URL exactly, and that the project is not paused.";
+  if (status === 0) return "Could not reach the database at " + info.host + ". Check that this matches your Supabase project's URL exactly, that the project is not paused, and that the key was pasted cleanly.";
   if (status === 401 || status === 403) return "The database rejected the key. Check SUPABASE_SERVICE_KEY.";
   if (status === 404) return "Table not found. Has supabase/schema.sql been run? (Or SUPABASE_URL points at the wrong project.)";
   return "Unexpected database response (" + status + ").";
@@ -23,6 +23,12 @@ module.exports = async function handler(req, res) {
     else if (info.urlSet && !info.keySet) reason = "SUPABASE_SERVICE_KEY is not set.";
     else if (!info.urlSet && info.keySet) reason = "SUPABASE_URL is not set.";
     return res.status(501).json({ ok: false, reason });
+  }
+  if (info.keyProblem === "bad-characters") {
+    return res.status(503).json({ ok: false, reason: "SUPABASE_SERVICE_KEY contains characters that can't be part of a key (hidden-key dots, spaces or line breaks). Delete it in Vercel and paste it again using the copy button." });
+  }
+  if (info.keyProblem === "public-key") {
+    return res.status(503).json({ ok: false, reason: "SUPABASE_SERVICE_KEY is the PUBLIC key. You need the secret key (starts with sb_secret_) or the legacy service_role key." });
   }
   const result = await db.ping();
   if (result.ok) return res.status(200).json({ ok: true });

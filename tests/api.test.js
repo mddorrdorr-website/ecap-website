@@ -238,4 +238,27 @@ test("sloppy pasting of the database URL is tolerated, and a hopeless one is exp
   process.env.SUPABASE_URL = saved; world.reset();
 });
 
+test("the health check recognises unusable keys without ever sending them", async () => {
+  const saved = process.env.SUPABASE_SERVICE_KEY;
+  const jwt = (role) => "eyJhbGciOiJIUzI1NiJ9." + Buffer.from(JSON.stringify({ role })).toString("base64url") + ".sig";
+  const cases = [
+    ["sb_secret_••••", /characters that can't be part of a key/],  // hidden-key bullet dots
+    ["sb_secret_abc def", /characters that can't be part of a key/],                       // stray space
+    ["sb_publishable_abc123", /PUBLIC key/],
+    [jwt("anon"), /PUBLIC key/],
+  ];
+  for (const [key, expected] of cases) {
+    world.reset(); process.env.SUPABASE_SERVICE_KEY = key;
+    const r = await call(health, { method: "GET" });
+    assert.equal(r.statusCode, 503, key);
+    assert.match(r.body.reason, expected, key);
+    assert.equal(world.calls.length, 0, "a bad key is never sent to the database");
+  }
+  for (const good of ["sb_secret_Abc123_xyz", jwt("service_role")]) {
+    world.reset(); process.env.SUPABASE_SERVICE_KEY = good;
+    assert.equal((await call(health, { method: "GET" })).statusCode, 200, good);
+  }
+  process.env.SUPABASE_SERVICE_KEY = saved; world.reset();
+});
+
 test.after(() => uninstall());

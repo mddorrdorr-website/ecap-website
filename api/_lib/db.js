@@ -33,9 +33,26 @@ function isConfigured() {
   return config() !== null;
 }
 
+// Spots the usual key mistakes WITHOUT sending it anywhere: characters that can't
+// be sent at all (hidden-key dots, spaces, line breaks), or the public key
+// pasted instead of the secret one.
+function keyProblem(key) {
+  if (!key) return "";
+  if (!/^[!-~]+$/.test(key)) return "bad-characters";
+  if (key.startsWith("sb_publishable_")) return "public-key";
+  if (key.startsWith("eyJ")) {
+    try {
+      const payload = JSON.parse(Buffer.from(key.split(".")[1], "base64url").toString("utf8"));
+      if (payload.role === "anon") return "public-key";
+    } catch (e) { /* not a readable JWT; let the database decide */ }
+  }
+  return "";
+}
+
 // For diagnostics only: which variables are present, and the host (not secret).
 function describe() {
   return {
+    keyProblem: keyProblem(cleanValue(process.env.SUPABASE_SERVICE_KEY)),
     urlSet: Boolean(cleanValue(process.env.SUPABASE_URL)),
     urlValid: normaliseUrl(process.env.SUPABASE_URL) !== "",
     keySet: Boolean(cleanValue(process.env.SUPABASE_SERVICE_KEY)),
