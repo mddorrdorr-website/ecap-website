@@ -1,6 +1,6 @@
 # ECAP Website — Status & Next Steps
 
-Last updated: 2026-10-03 (Supabase registration built, awaiting activation — see 'Registration database')
+Last updated: 2026-10-03 (registration database LIVE)
 
 ## Where it lives
 - **Live site:** https://ecap-website.vercel.app (Vercel project `ecap-website`, account `tinodebby2016-4089's projects`)
@@ -34,7 +34,7 @@ Last updated: 2026-10-03 (Supabase registration built, awaiting activation — s
 ## ID card (`id-card.html`)
 - Uses the approved design package from `ECAP-ID-Card-Source/`: `js/card-renderer.js` (SVG renderer), `js/course-code.js`, `js/logo-data.js` (embedded logo, crop coordinates are calibrated to it, don't swap the logo file). Front: logo, centre name, slogan, "PARTICIPANT CARD", 336px circular photo, name, course code, nationality, organisation. Back: only the full logo, rotated -90 degrees, on plain white. Canvas is 640x1010; PNG export is 1280x2020.
 - **Photo editor:** drag to reposition, zoom slider, Change photo, Remove. The photo exists only in browser memory and is never stored anywhere. (`computePhotoGeometry` in `js/id-card-builder.js` feeds a 672x672 crop to the renderer.)
-- **Buttons:** the red **Send final card to ECAP for printing** is the primary action. "Download my card instead" is a small link below it.
+- **Buttons:** the red **Send final card to ECAP for printing** is the primary action. It locks while sending (a send can take 10-30 seconds), so a double-click can't email ECAP twice. If the server says no (limit reached, code replaced, unknown code) the participant sees why; only a real outage or network failure triggers the download + email-draft fallback. "Download my card instead" is a small link below it.
 
 ## Email sending (live and tested)
 - `api/send-card.js` is a Vercel serverless function (no npm dependencies) that emails the front and back PNGs through **Resend**, entirely server-side. The participant's mailbox is not involved.
@@ -48,14 +48,13 @@ Last updated: 2026-10-03 (Supabase registration built, awaiting activation — s
 
 ## Open items
 1. **Confirm the test emails arrived.** Two went to `mddorrdorr.gh@gmail.com` on 2026-10-03 ("DEPLOY TEST" and "FULL FLOW TEST"). Check the attachments look right (photo on the front, rotated logo on the back), then delete them. Still unverified: I could only confirm the send succeeded, not what arrives.
-2. **Activate the registration database (code is built and tested; needs your Supabase setup).** Until these steps are done, the site's Register button reports "Registration isn't open on this site yet" if deployed, so **do not push until step 4**:
-   1. Create a NEW Supabase project for ECAP (separate from DingDing: it holds personal details). Note the project password.
-   2. In its SQL Editor, paste and run `supabase/schema.sql`.
-   3. In Supabase: Project Settings -> API. Copy the **Project URL** and the **secret key** (or legacy `service_role` key). In Vercel (ecap-website -> Settings -> Environment Variables) add `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`, Production. Never paste the secret key into chat or any file.
-   4. Push to GitHub (Vercel deploys) and test on the live site.
+2. **Registration database: LIVE and verified on 2026-10-03.** New Supabase project for ECAP (host `xegqftwpxbdxuzqxvisw.supabase.co`), `supabase/schema.sql` run, `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` set in Vercel. Live test passed: registered, wiped all browser storage, built the card from the code alone, pressed Send (200, emailed). **A test row ("LIVE TEST Please Ignore", code `ECAP-LTPI-CN2026-51N`) is still in the table: delete it in Supabase -> Table Editor -> registrations.**
+   - **Check `https://ecap-website.vercel.app/api/health` any time.** `{"ok":true}` means the database is reachable. Otherwise it says in plain English what is wrong (key rejected, table missing, address unreachable, key pasted wrongly).
+   - **Gotcha that cost time:** the Supabase secret key must be copied with the eye icon revealed. Copying it while hidden pastes dots into Vercel and breaks everything. Changing a Vercel variable only takes effect after a redeploy.
    - Free Supabase projects **pause after ~a week of inactivity**. `vercel.json` runs `/api/health` daily to keep it awake; check Vercel -> Cron Jobs shows it, or move to a paid plan before relying on it.
    - The table is locked down with Row Level Security and no policies: only the server's secret key can read or write it.
-   - Known limits: a code is the only credential (anyone with a code can build that person's card, which shows only name/nationality/organisation); there is no admin screen yet, so ECAP reads registrations from the alert emails or the Supabase table editor. A participant who loses their code must ask ECAP.
+   - Known limits: a code is the only credential (anyone with a code can build that person's card, which shows only name/nationality/organisation); there is no admin screen yet, so ECAP reads registrations from the alert emails or the Supabase table editor; a participant who loses their code must ask ECAP.
+   - Possible next step: a confirmation email to the participant with their code (needs safeguards so the site can't be used to email strangers).
 3. **Domain.** Canonical and og:url tags still point to `https://ecap.mddorrdorrgh.org/`, which is **not set up**. Either add that subdomain in Vercel (a DNS record on a domain you already own) or change the tags to `ecap-website.vercel.app`.
 4. **Real content:** board names, titles and photos; gallery photos and two videos; real cohort dates and fees.
 5. **Site-wide logo.** The nav/footer use the older, lower-resolution `assets/logos/ecap-logo.png`. The card uses the official high-resolution logo. Swapping the site-wide one would make them consistent.

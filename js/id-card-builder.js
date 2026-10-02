@@ -312,42 +312,59 @@
   });
 
   // ---------- Send to ECAP ----------
-  document.getElementById("sendLink").addEventListener("click", function () {
+  var sendBtn = document.getElementById("sendLink");
+  var sendBtnLabel = sendBtn.innerHTML;
+
+  // Used only when the server itself can't be used (down, offline, not set up):
+  // hand the participant the card + an email draft so they can still get it to ECAP.
+  function manualFallback(front, back, status) {
+    downloadDataUrl(front, "ECAP-ID-" + registration.code + "-front.png");
+    setTimeout(function () { downloadDataUrl(back, "ECAP-ID-" + registration.code + "-back.png"); }, 300);
+    var subject = "ECAP ID card — " + registration.fullName + " (" + registration.code + ")";
+    var body = "Please find attached my ECAP ID card (front and back), just downloaded to my device.\n\nName: " +
+      registration.fullName + "\nCourse code: " + registration.code;
+    setTimeout(function () {
+      window.location.href = "mailto:mddorrdorr.gh@gmail.com?subject=" +
+        encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    }, 900);
+    status.style.color = "var(--red-dark)";
+    status.textContent = "We couldn't send your card automatically, so we've downloaded it and opened an email draft. Please attach the two downloaded images before sending.";
+  }
+
+  sendBtn.addEventListener("click", function () {
+    if (sendBtn.disabled) return; // already sending — a second click would email ECAP a duplicate
     var status = document.getElementById("sendStatus");
     status.style.display = "block";
     status.style.color = "var(--fg-muted)";
     status.textContent = "Preparing your card…";
+    sendBtn.disabled = true;
+    sendBtn.textContent = "Sending…";
+
+    function done() { sendBtn.disabled = false; sendBtn.innerHTML = sendBtnLabel; }
 
     Promise.all([renderSidePng("front"), renderSidePng("back")]).then(function (res) {
-      var payload = {
-        code: registration.code,
-        frontImage: res[0],
-        backImage: res[1],
-      };
-      status.textContent = "Sending to ECAP…";
+      status.textContent = "Sending to ECAP… this can take up to half a minute, please keep this page open.";
       return fetch("/api/send-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ code: registration.code, frontImage: res[0], backImage: res[1] }),
       }).then(function (r) {
-        if (!r.ok) throw new Error("send-failed");
-        status.style.color = "var(--teal-dark)";
-        status.textContent = "Sent! ECAP will print your card once your attendance is confirmed.";
-      }).catch(function () {
-        // Graceful fallback: no email service configured yet — download both
-        // sides and open a mailto draft so the user can attach them manually.
-        downloadDataUrl(res[0], "ECAP-ID-" + registration.code + "-front.png");
-        setTimeout(function () { downloadDataUrl(res[1], "ECAP-ID-" + registration.code + "-back.png"); }, 300);
-        var subject = "ECAP ID card — " + registration.fullName + " (" + registration.code + ")";
-        var body = "Please find attached my ECAP ID card (front and back), just downloaded to my device.\n\nName: " +
-          registration.fullName + "\nCourse code: " + registration.code;
-        setTimeout(function () {
-          window.location.href = "mailto:mddorrdorr.gh@gmail.com?subject=" +
-            encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-        }, 900);
-        status.style.color = "var(--red-dark)";
-        status.textContent = "Automatic sending isn't configured yet — we've downloaded your card and opened an email draft. Please attach the two downloaded images before sending.";
+        if (r.ok) {
+          status.style.color = "var(--teal-dark)";
+          status.textContent = "Sent! ECAP will print your card once your attendance is confirmed.";
+          return;
+        }
+        // The server answered and said no: tell the participant why, rather than falling back.
+        if (r.status === 429) { status.style.color = "var(--red-dark)"; status.textContent = "This card has already been sent several times. If something needs changing, please contact ECAP."; return; }
+        if (r.status === 409) { status.style.color = "var(--red-dark)"; status.textContent = "This code was replaced when your details were corrected. Please use your newer code."; return; }
+        if (r.status === 404 || r.status === 400) { status.style.color = "var(--red-dark)"; status.textContent = "We couldn't send this card (code not recognised). Please contact ECAP."; return; }
+        manualFallback(res[0], res[1], status); // 5xx / not configured
+      }, function () {
+        manualFallback(res[0], res[1], status); // network failure
       });
-    });
+    }).catch(function () {
+      status.style.color = "var(--red-dark)";
+      status.textContent = "Something went wrong preparing your card. Please try again.";
+    }).then(done, done);
   });
 })();
