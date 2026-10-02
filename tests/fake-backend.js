@@ -2,8 +2,8 @@
 // suite and by tests/dev-server.js, so the whole site can be exercised locally
 // without any real accounts or secrets. Replaces global fetch.
 const world = {
-  rows: [], emails: [], calls: [], forceCollisions: 0, resendOk: true,
-  reset() { this.rows = []; this.emails = []; this.calls = []; this.forceCollisions = 0; this.resendOk = true; },
+  rows: [], emails: [], calls: [], forceCollisions: 0, resendOk: true, failStatus: 0,
+  reset() { this.rows = []; this.emails = []; this.calls = []; this.forceCollisions = 0; this.resendOk = true; this.failStatus = 0; },
 };
 
 function matches(row, params) {
@@ -25,6 +25,8 @@ function install() {
       world.emails.push(JSON.parse(opts.body));
       return world.resendOk ? json(200, { id: "x" }) : json(500, { message: "boom" });
     }
+    if (world.failStatus === -1) throw new TypeError("getaddrinfo ENOTFOUND");
+    if (world.failStatus > 0) return json(world.failStatus, { message: "forced failure" });
     const u = new URL(url);
     world.calls.push({ method: opts.method, path: u.pathname, headers: opts.headers });
     const method = opts.method || "GET";

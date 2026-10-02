@@ -76,9 +76,14 @@ async function updateByCode(code, patch) {
   if (r.status !== 204 && r.status !== 200) throw new Error("Update failed (" + r.status + ")");
 }
 
+// Returns { ok, status }; status 0 means the database could not be reached at all.
 async function ping() {
-  const r = await rest("GET", "registrations?select=id&limit=1");
-  return r.status === 200;
+  try {
+    const r = await rest("GET", "registrations?select=id&limit=1");
+    return { ok: r.status === 200, status: r.status };
+  } catch (e) {
+    return { ok: false, status: 0 };
+  }
 }
 
 module.exports = { isConfigured, findByCode, countRecentByEmail, insertRegistration, updateByCode, ping };

@@ -211,4 +211,15 @@ test("the health check reports ok when the database answers", async () => {
   assert.deepEqual(r.body, { ok: true });
 });
 
+test("the health check says WHICH thing is wrong when the database can't be used", async () => {
+  const cases = [[-1, /Could not reach.*SUPABASE_URL/], [401, /rejected the key/], [404, /Table not found.*schema\.sql/], [500, /Unexpected.*500/]];
+  for (const [fail, expected] of cases) {
+    world.reset(); world.failStatus = fail;
+    const r = await call(health, { method: "GET" });
+    assert.equal(r.statusCode, 503);
+    assert.match(r.body.reason, expected);
+  }
+  world.reset();
+});
+
 test.after(() => uninstall());
