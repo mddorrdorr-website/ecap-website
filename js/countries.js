@@ -25,3 +25,8 @@ const ECAP_COUNTRIES = [
   "United Arab Emirates","United Kingdom","United States","Uruguay","Uzbekistan","Vanuatu",
   "Vatican City","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"
 ];
+
+// Lets the serverless functions require() this file; a no-op in the browser.
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { ECAP_COUNTRIES };
+}

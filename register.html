@@ -108,7 +108,13 @@
             <p class="hint" id="electiveHint" style="color:var(--red-dark);display:none;">Please select at least one elective programme.</p>
           </div>
 
-          <button type="submit" class="btn btn-red btn-lg" style="width:100%;">Get my course code</button>
+          <!-- Bot trap: invisible to people, bots tend to fill it in; the server rejects any request that has it -->
+          <div style="position:absolute;left:-9999px;" aria-hidden="true">
+            <label>Leave this field empty <input type="text" id="hpCheck" name="hp_check" tabindex="-1" autocomplete="off" /></label>
+          </div>
+
+          <p id="formError" role="alert" style="display:none;color:var(--red-dark);font-weight:600;font-size:14px;margin:0 0 14px;text-align:center;"></p>
+          <button type="submit" id="submitBtn" class="btn btn-red btn-lg" style="width:100%;">Get my course code</button>
         </form>
       </div>
 
@@ -117,7 +123,7 @@
         <h2 class="h-md" style="margin:0 0 8px;">You're registered 🎉</h2>
         <p style="color:var(--fg-muted);margin:0 0 20px;">Save this code — you'll need it to build your participant ID card.</p>
         <div class="code-box" id="codeDisplay">ECAP-XXXX-XXXX</div>
-        <p style="color:var(--fg-muted);font-size:14px;margin:18px 0 22px;">We've also opened an email draft summarising your registration to send to ECAP for confirmation.</p>
+        <p id="notifyNote" style="color:var(--fg-muted);font-size:14px;margin:18px 0 22px;">Your registration has been recorded and ECAP has been notified. If you ever lose this code, contact ECAP and we can find it for you.</p>
         <a href="#" id="goToCardBtn" class="btn btn-red btn-lg" style="width:100%;">Build my ID card now</a>
         <button type="button" id="editDetailsBtn" class="send-discreet mt-m" style="margin-inline:auto;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -154,7 +160,7 @@
 <a href="https://wa.me/233208980312?text=Hello%20ECAP%2C%20I%27d%20like%20to%20make%20an%20enquiry." class="wa-float" target="_blank" rel="noopener" aria-label="Chat with us on WhatsApp"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 00-8.5 15.3L2 22l4.8-1.5A10 10 0 1012 2zm0 18.3c-1.5 0-3-.4-4.3-1.2l-.3-.2-2.8.9.9-2.8-.2-.3A8.3 8.3 0 1112 20.3zM17.5 14.4c-.3-.1-1.7-.8-1.9-.9-.3-.1-.5-.1-.7.2-.2.3-.7.8-.9 1-.2.2-.3.2-.6.1-.3-.2-1.2-.5-2.3-1.4-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5l-.9-2.1c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.4s1.1 2.8 1.2 3c.1.2 2.1 3.3 5.1 4.6.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 1.9-1.3.2-.6.2-1.2.2-1.3-.1-.2-.3-.2-.6-.4z"/></svg></a>
 <script src="js/courses.js"></script>
 <script src="js/countries.js"></script>
-<script src="js/course-code.js"></script>
+<script src="js/validation.js"></script>
 <script src="js/registration.js"></script>
 <script src="js/main.js"></script>
 <script>
@@ -199,41 +205,20 @@
       nationalitySelect.appendChild(opt);
     });
 
-    // Phone validation. Ghana, China and the UK get their real local/
-    // international digit-count rules (per the brief: GH ~10 local digits,
-    // CN 11, UK found to be 11 local / 10 after +44); any other nationality
-    // gets a generous generic international sanity check (7–15 digits),
-    // since we don't hold every country's exact dialling-plan length.
-    function isValidPhone(raw) {
-      var v = String(raw || "").replace(/[\s().-]/g, "");
-      if (!v) return false;
-      if (v[0] === "+") {
-        var rest = v.slice(1);
-        if (!/^\d+$/.test(rest)) return false;
-        if (rest.indexOf("233") === 0) return rest.length === 12; // +233 + 9 digits (GH)
-        if (rest.indexOf("86") === 0) return rest.length === 13;  // +86 + 11 digits (CN)
-        if (rest.indexOf("44") === 0) return rest.length === 12;  // +44 + 10 digits (UK, leading 0 dropped)
-        return rest.length >= 8 && rest.length <= 15;
-      }
-      if (!/^\d+$/.test(v)) return false;
-      if (v[0] === "0" && v.length === 10) return true; // GH local: 0XXXXXXXXX
-      if (v[0] === "1" && v.length === 11) return true; // CN local: 1XXXXXXXXXX
-      if (v[0] === "0" && v.length === 11) return true; // UK local: 0XXXXXXXXXX
-      return v.length >= 7 && v.length <= 12;
-    }
-
-    // ---------- Field-level validation with red error highlighting ----------
+    // Field rules come from js/validation.js — the same file the server uses,
+    // so the browser and the server can never disagree about what is valid.
+    var V = ECAPValidation;
     var fieldChecks = [
       { input: document.getElementById("fullName"), error: document.getElementById("fullNameError"),
-        test: function (v) { return v.trim().length > 0; } },
+        test: function (v) { return V.isValidText(v, V.MAX_NAME); } },
       { input: document.getElementById("email"), error: document.getElementById("emailError"),
-        test: function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); } },
+        test: V.isValidEmail },
       { input: document.getElementById("phone"), error: document.getElementById("phoneError"),
-        test: isValidPhone },
+        test: V.isValidPhone },
       { input: nationalitySelect, error: document.getElementById("nationalityError"),
         test: function (v) { return ECAP_COUNTRIES.indexOf(v) !== -1; } },
       { input: document.getElementById("organisation"), error: document.getElementById("organisationError"),
-        test: function (v) { return v.trim().length > 0; } },
+        test: function (v) { return V.isValidText(v, V.MAX_ORGANISATION); } },
     ];
 
     function setFieldValid(check, valid) {
@@ -258,8 +243,40 @@
     }
 
     var form = document.getElementById("registerForm");
-    form.addEventListener("submit", function (e) {
+    var submitBtn = document.getElementById("submitBtn");
+    var formError = document.getElementById("formError");
+    var issuedCode = ""; // the code from an earlier submit — retired by the server if they edit and resubmit
+
+    function showFormError(message) {
+      formError.textContent = message || "";
+      formError.style.display = message ? "block" : "none";
+    }
+
+    // Show the server's verdict on a rejected registration.
+    function reportRejection(r) {
+      if (r.network) return showFormError("We couldn't reach the server. Please check your internet connection and try again.");
+      if (r.status === 501) return showFormError("Registration isn't open on this site yet. Please contact ECAP.");
+      if (r.status === 400 && r.data && r.data.errors) {
+        var general = [], firstBad = null;
+        Object.keys(r.data.errors).forEach(function (key) {
+          var check = fieldChecks.filter(function (c) { return c.input.id === key; })[0];
+          if (check) {
+            setFieldValid(check, false);
+            if (!firstBad) firstBad = check.input;
+          } else {
+            general.push(r.data.errors[key]);
+          }
+        });
+        if (general.length) showFormError(general.join(" "));
+        if (firstBad) firstBad.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      showFormError((r.data && r.data.error) || "Something went wrong saving your registration. Please try again.");
+    }
+
+    form.addEventListener("submit", async function (e) {
       e.preventDefault();
+      showFormError("");
 
       if (!validateFields()) return;
 
@@ -275,48 +292,40 @@
       }
       hint.style.display = "none";
 
-      var fullName = document.getElementById("fullName").value.trim();
-      var email = document.getElementById("email").value.trim();
-      var phone = document.getElementById("phone").value.trim();
-      var nationality = document.getElementById("nationality").value.trim();
-      var organisation = document.getElementById("organisation").value.trim();
       var cohortParts = cohortSelect.value.split("|");
-      var cohortLocation = cohortParts[0], cohortYear = cohortParts[1];
-      var cohortLabel = cohortSelect.options[cohortSelect.selectedIndex].textContent;
-
-      var record = {
-        fullName: fullName, email: email, phone: phone,
-        nationality: nationality, organisation: organisation,
-        cohortLocation: cohortLocation, cohortYear: cohortYear, cohortLabel: cohortLabel,
-        core: ECAP_COURSES.filter(function (c) { return c.group === "core"; }).map(function (c) { return c.id; }),
-        electives: electives
+      var payload = {
+        fullName: document.getElementById("fullName").value.trim(),
+        email: document.getElementById("email").value.trim(),
+        phone: document.getElementById("phone").value.trim(),
+        nationality: nationalitySelect.value,
+        organisation: document.getElementById("organisation").value.trim(),
+        cohortLocation: cohortParts[0],
+        cohortYear: Number(cohortParts[1]),
+        electives: electives,
+        replaces: issuedCode,
+        website: document.getElementById("hpCheck").value // bot trap — always empty for real people
       };
-      var code = EcapRegistration.saveRegistration(record);
 
+      var buttonLabel = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Creating your code…";
+      var r = await EcapRegistration.register(payload);
+      submitBtn.disabled = false;
+      submitBtn.textContent = buttonLabel;
+
+      if (!r.ok) return reportRejection(r);
+
+      issuedCode = r.data.code;
       document.getElementById("regFormWrap").style.display = "none";
       var success = document.getElementById("regSuccess");
       success.style.display = "block";
       success.classList.add("in");
-      document.getElementById("codeDisplay").textContent = code;
-      document.getElementById("goToCardBtn").href = "id-card.html?code=" + encodeURIComponent(code);
+      document.getElementById("codeDisplay").textContent = issuedCode;
+      document.getElementById("goToCardBtn").href = "id-card.html?code=" + encodeURIComponent(issuedCode);
+      document.getElementById("notifyNote").textContent = r.data.notified
+        ? "Your registration has been recorded and ECAP has been notified. If you ever lose this code, contact ECAP and we can find it for you."
+        : "Your registration has been recorded. If you ever lose this code, contact ECAP and we can find it for you.";
       success.scrollIntoView({ behavior: "smooth", block: "start" });
-
-      // Open a confirmation email draft to ECAP (does not block the on-screen code display)
-      var subject = "ECAP registration — " + fullName + " (" + code + ")";
-      var body =
-        "New ECAP registration\n\n" +
-        "Course code: " + code + "\n" +
-        "Cohort: " + cohortLabel + "\n" +
-        "Name: " + fullName + "\n" +
-        "Email: " + email + "\n" +
-        "Phone: " + phone + "\n" +
-        "Nationality: " + nationality + "\n" +
-        "Organisation: " + (organisation || "—") + "\n" +
-        "Electives: " + electives.join(", ") + "\n";
-      setTimeout(function () {
-        window.location.href = "mailto:mddorrdorr.gh@gmail.com?subject=" +
-          encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-      }, 600);
     });
 
     // Let a participant return to their filled-in form even after a code was

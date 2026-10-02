@@ -37,24 +37,44 @@
   var codeStep = document.getElementById("codeStep");
   var builderStep = document.getElementById("builderStep");
 
+  function showCodeError(message) {
+    codeError.textContent = message;
+    codeError.style.display = message ? "block" : "none";
+  }
+
+  // Looks the code up on the server (so it works from any device) and, if it's
+  // good, opens the builder. Returns true when the builder was opened.
+  async function openWithCode(rawCode, button) {
+    var code = String(rawCode || "").trim().toUpperCase();
+    showCodeError("");
+    if (!code) { showCodeError("Please enter your course code."); return false; }
+
+    var label = button ? button.textContent : "";
+    if (button) { button.disabled = true; button.textContent = "Checking…"; }
+    var r = await EcapRegistration.lookup(code);
+    if (button) { button.disabled = false; button.textContent = label; }
+
+    if (r.network) { showCodeError("We couldn't reach the server. Please check your internet connection and try again."); return false; }
+    if (r.status === 404 || r.status === 400) { showCodeError("We couldn't find that code. Please check it and try again, or register for a programme."); return false; }
+    if (!r.ok) { showCodeError((r.data && r.data.error) || "Something went wrong. Please try again."); return false; }
+    if (r.data.status === "superseded") {
+      showCodeError("That code was replaced when the details were corrected." +
+        (r.data.replacedBy ? " Please use the newer code: " + r.data.replacedBy : ""));
+      return false;
+    }
+    registration = r.data.registration;
+    codeInput.value = registration.code;
+    enterBuilder();
+    return true;
+  }
+
   var preCode = new URLSearchParams(window.location.search).get("code");
   if (preCode) {
     codeInput.value = preCode;
-    var preRec = EcapRegistration.lookupCode(preCode);
-    if (preRec) { registration = preRec; enterBuilder(); }
+    openWithCode(preCode); // arrived straight from registration — skip the extra click
   }
 
-  function tryEnterBuilder() {
-    var code = codeInput.value.trim().toUpperCase();
-    var rec = EcapRegistration.lookupCode(code);
-    if (!rec) {
-      codeError.style.display = "block";
-      return;
-    }
-    codeError.style.display = "none";
-    registration = rec;
-    enterBuilder();
-  }
+  function tryEnterBuilder() { openWithCode(codeInput.value, document.getElementById("codeSubmit")); }
   document.getElementById("codeSubmit").addEventListener("click", tryEnterBuilder);
   codeInput.addEventListener("keydown", function (e) { if (e.key === "Enter") tryEnterBuilder(); });
 
@@ -301,10 +321,6 @@
     Promise.all([renderSidePng("front"), renderSidePng("back")]).then(function (res) {
       var payload = {
         code: registration.code,
-        fullName: registration.fullName,
-        nationality: registration.nationality,
-        organisation: registration.organisation,
-        electives: courseTitles(registration.electives || []),
         frontImage: res[0],
         backImage: res[1],
       };

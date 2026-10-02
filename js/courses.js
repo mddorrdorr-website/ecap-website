@@ -63,3 +63,8 @@ function ecapNextCohortYear(month) {
   const monthNow = now.getMonth() + 1;
   return month >= monthNow ? year : year + 1;
 }
+
+// Lets the serverless functions require() this file; a no-op in the browser.
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { ECAP_COURSES, ECAP_COHORTS, ecapNextCohortYear };
+}
