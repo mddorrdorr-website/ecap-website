@@ -324,6 +324,10 @@ img { max-width: 100%; display: block; }
   outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(7,171,178,.18);
 }
 .field textarea{resize:vertical;min-height:120px;}
+.field .field-error{display:none;font-size:13px;color:var(--red-dark);margin-top:6px;font-weight:600;}
+.field.invalid label{color:var(--red-dark);}
+.field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--red);background:color-mix(in srgb, var(--red) 5%, #fff);}
+.field.invalid input:focus,.field.invalid select:focus,.field.invalid textarea:focus{box-shadow:0 0 0 3px rgba(205,39,33,.18);}
 .checkrow{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;transition:border-color .2s, background .2s;}
 .checkrow:has(input:checked){border-color:var(--teal);background:color-mix(in srgb, var(--teal) 6%, #fff);}
 .checkrow input{width:18px;height:18px;margin-top:2px;accent-color:var(--teal);flex:none;}

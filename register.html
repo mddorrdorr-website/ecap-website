@@ -63,23 +63,31 @@
           <div class="field">
             <label for="fullName">Full name</label>
             <input type="text" id="fullName" required placeholder="As it should appear on your ID card" />
+            <p class="field-error" id="fullNameError">Please enter your full name.</p>
           </div>
           <div class="field">
             <label for="email">Email address</label>
             <input type="email" id="email" required placeholder="you@example.com" />
+            <p class="field-error" id="emailError">Please enter a valid email address.</p>
           </div>
           <div class="field">
             <label for="phone">Phone number</label>
-            <input type="tel" id="phone" required placeholder="+233 ..." />
+            <input type="tel" id="phone" required placeholder="e.g. 0244123456 (GH), 13812345678 (CN), 07911123456 (UK)" />
+            <p class="hint">Local format or with a country code, e.g. +233244123456, +8613812345678, +447911123456.</p>
+            <p class="field-error" id="phoneError">Please enter a valid phone number.</p>
           </div>
           <div class="grid grid-2" style="gap:16px;">
             <div class="field">
               <label for="nationality">Nationality</label>
-              <input type="text" id="nationality" required placeholder="e.g. Ghanaian" />
+              <select id="nationality" required>
+                <option value="">Select your country…</option>
+              </select>
+              <p class="field-error" id="nationalityError">Please select your nationality.</p>
             </div>
             <div class="field">
               <label for="organisation">Organisation</label>
               <input type="text" id="organisation" required placeholder="Company / agency" />
+              <p class="field-error" id="organisationError">Please enter your organisation.</p>
             </div>
           </div>
 
@@ -111,6 +119,11 @@
         <div class="code-box" id="codeDisplay">ECAP-XXXX-XXXX</div>
         <p style="color:var(--fg-muted);font-size:14px;margin:18px 0 22px;">We've also opened an email draft summarising your registration to send to ECAP for confirmation.</p>
         <a href="#" id="goToCardBtn" class="btn btn-red btn-lg" style="width:100%;">Build my ID card now</a>
+        <button type="button" id="editDetailsBtn" class="send-discreet mt-m" style="margin-inline:auto;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Spotted a mistake? Edit my details
+        </button>
+        <p style="color:var(--fg-muted);font-size:12.5px;margin-top:8px;">Editing and resubmitting issues a new course code — the one above will no longer be used.</p>
       </div>
 
     </div>
@@ -140,6 +153,7 @@
 
 <a href="https://wa.me/233208980312?text=Hello%20ECAP%2C%20I%27d%20like%20to%20make%20an%20enquiry." class="wa-float" target="_blank" rel="noopener" aria-label="Chat with us on WhatsApp"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 00-8.5 15.3L2 22l4.8-1.5A10 10 0 1012 2zm0 18.3c-1.5 0-3-.4-4.3-1.2l-.3-.2-2.8.9.9-2.8-.2-.3A8.3 8.3 0 1112 20.3zM17.5 14.4c-.3-.1-1.7-.8-1.9-.9-.3-.1-.5-.1-.7.2-.2.3-.7.8-.9 1-.2.2-.3.2-.6.1-.3-.2-1.2-.5-2.3-1.4-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5l-.9-2.1c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.4s1.1 2.8 1.2 3c.1.2 2.1 3.3 5.1 4.6.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 1.9-1.3.2-.6.2-1.2.2-1.3-.1-.2-.3-.2-.6-.4z"/></svg></a>
 <script src="js/courses.js"></script>
+<script src="js/countries.js"></script>
 <script src="js/course-code.js"></script>
 <script src="js/registration.js"></script>
 <script src="js/main.js"></script>
@@ -176,18 +190,78 @@
         cohortSelect.appendChild(opt);
       });
 
+    // Nationality dropdown — a closed list, so only a real country can be chosen
+    var nationalitySelect = document.getElementById("nationality");
+    ECAP_COUNTRIES.slice().sort().forEach(function (country) {
+      var opt = document.createElement("option");
+      opt.value = country;
+      opt.textContent = country;
+      nationalitySelect.appendChild(opt);
+    });
+
+    // Phone validation. Ghana, China and the UK get their real local/
+    // international digit-count rules (per the brief: GH ~10 local digits,
+    // CN 11, UK found to be 11 local / 10 after +44); any other nationality
+    // gets a generous generic international sanity check (7–15 digits),
+    // since we don't hold every country's exact dialling-plan length.
+    function isValidPhone(raw) {
+      var v = String(raw || "").replace(/[\s().-]/g, "");
+      if (!v) return false;
+      if (v[0] === "+") {
+        var rest = v.slice(1);
+        if (!/^\d+$/.test(rest)) return false;
+        if (rest.indexOf("233") === 0) return rest.length === 12; // +233 + 9 digits (GH)
+        if (rest.indexOf("86") === 0) return rest.length === 13;  // +86 + 11 digits (CN)
+        if (rest.indexOf("44") === 0) return rest.length === 12;  // +44 + 10 digits (UK, leading 0 dropped)
+        return rest.length >= 8 && rest.length <= 15;
+      }
+      if (!/^\d+$/.test(v)) return false;
+      if (v[0] === "0" && v.length === 10) return true; // GH local: 0XXXXXXXXX
+      if (v[0] === "1" && v.length === 11) return true; // CN local: 1XXXXXXXXXX
+      if (v[0] === "0" && v.length === 11) return true; // UK local: 0XXXXXXXXXX
+      return v.length >= 7 && v.length <= 12;
+    }
+
+    // ---------- Field-level validation with red error highlighting ----------
+    var fieldChecks = [
+      { input: document.getElementById("fullName"), error: document.getElementById("fullNameError"),
+        test: function (v) { return v.trim().length > 0; } },
+      { input: document.getElementById("email"), error: document.getElementById("emailError"),
+        test: function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); } },
+      { input: document.getElementById("phone"), error: document.getElementById("phoneError"),
+        test: isValidPhone },
+      { input: nationalitySelect, error: document.getElementById("nationalityError"),
+        test: function (v) { return ECAP_COUNTRIES.indexOf(v) !== -1; } },
+      { input: document.getElementById("organisation"), error: document.getElementById("organisationError"),
+        test: function (v) { return v.trim().length > 0; } },
+    ];
+
+    function setFieldValid(check, valid) {
+      check.input.closest(".field").classList.toggle("invalid", !valid);
+      if (check.error) check.error.style.display = valid ? "none" : "block";
+    }
+
+    fieldChecks.forEach(function (check) {
+      var evt = check.input.tagName === "SELECT" ? "change" : "input";
+      check.input.addEventListener(evt, function () { setFieldValid(check, check.test(check.input.value)); });
+    });
+
+    function validateFields() {
+      var firstInvalid = null;
+      fieldChecks.forEach(function (check) {
+        var valid = check.test(check.input.value);
+        setFieldValid(check, valid);
+        if (!valid && !firstInvalid) firstInvalid = check.input;
+      });
+      if (firstInvalid) firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+      return !firstInvalid;
+    }
+
     var form = document.getElementById("registerForm");
     form.addEventListener("submit", function (e) {
       e.preventDefault();
 
-      // The form uses novalidate (so we control the UX), but the Constraint
-      // Validation API still works when called explicitly — this blocks
-      // submission on any empty required field and shows the browser's
-      // native "please fill out this field" prompt on the first one.
-      if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-      }
+      if (!validateFields()) return;
 
       var electives = Array.prototype.slice
         .call(form.querySelectorAll('input[name="elective"]:checked'))
@@ -243,6 +317,16 @@
         window.location.href = "mailto:mddorrdorr.gh@gmail.com?subject=" +
           encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
       }, 600);
+    });
+
+    // Let a participant return to their filled-in form even after a code was
+    // issued, in case they spot a mistake. Nothing was cleared, so their
+    // answers are all still there — this just brings the form back on screen.
+    document.getElementById("editDetailsBtn").addEventListener("click", function () {
+      document.getElementById("regSuccess").style.display = "none";
+      var formWrap = document.getElementById("regFormWrap");
+      formWrap.style.display = "block";
+      formWrap.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   })();
 </script>
