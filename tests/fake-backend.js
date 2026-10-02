@@ -28,7 +28,7 @@ function install() {
     if (world.failStatus === -1) throw new TypeError("getaddrinfo ENOTFOUND");
     if (world.failStatus > 0) return json(world.failStatus, { message: "forced failure" });
     const u = new URL(url);
-    world.calls.push({ method: opts.method, path: u.pathname, headers: opts.headers });
+    world.calls.push({ method: opts.method, host: u.host, path: u.pathname, headers: opts.headers });
     const method = opts.method || "GET";
     if (method === "GET") {
       const limit = Number(u.searchParams.get("limit") || 1000);

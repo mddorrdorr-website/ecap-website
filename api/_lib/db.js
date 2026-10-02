@@ -7,14 +7,40 @@
      SUPABASE_URL          e.g. https://abcdefgh.supabase.co
      SUPABASE_SERVICE_KEY  the project's secret / service_role key */
 
+// Be forgiving about how the values were pasted: stray spaces/quotes/newlines,
+// a missing https://, or extra path such as /rest/v1 on the end.
+function cleanValue(raw) {
+  return String(raw || "").trim().replace(/^["']+|["']+$/g, "").trim();
+}
+
+function normaliseUrl(raw) {
+  let v = cleanValue(raw);
+  if (!v) return "";
+  if (!/^https?:\/\//i.test(v)) v = "https://" + v;
+  try {
+    const u = new URL(v);
+    return /^[a-z0-9.-]+$/i.test(u.hostname) && u.hostname.includes(".") ? u.origin : "";
+  } catch (e) { return ""; }
+}
+
 function config() {
-  const url = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
-  const key = (process.env.SUPABASE_SERVICE_KEY || "").trim();
+  const url = normaliseUrl(process.env.SUPABASE_URL);
+  const key = cleanValue(process.env.SUPABASE_SERVICE_KEY);
   return url && key ? { url, key } : null;
 }
 
 function isConfigured() {
   return config() !== null;
+}
+
+// For diagnostics only: which variables are present, and the host (not secret).
+function describe() {
+  return {
+    urlSet: Boolean(cleanValue(process.env.SUPABASE_URL)),
+    urlValid: normaliseUrl(process.env.SUPABASE_URL) !== "",
+    keySet: Boolean(cleanValue(process.env.SUPABASE_SERVICE_KEY)),
+    host: normaliseUrl(process.env.SUPABASE_URL).replace(/^https?:\/\//, ""),
+  };
 }
 
 // Newer "sb_secret_..." keys go in the apikey header only; legacy JWT-style
@@ -86,4 +112,4 @@ async function ping() {
   }
 }
 
-module.exports = { isConfigured, findByCode, countRecentByEmail, insertRegistration, updateByCode, ping };
+module.exports = { isConfigured, describe, findByCode, countRecentByEmail, insertRegistration, updateByCode, ping };

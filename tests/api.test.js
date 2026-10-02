@@ -212,7 +212,7 @@ test("the health check reports ok when the database answers", async () => {
 });
 
 test("the health check says WHICH thing is wrong when the database can't be used", async () => {
-  const cases = [[-1, /Could not reach.*SUPABASE_URL/], [401, /rejected the key/], [404, /Table not found.*schema\.sql/], [500, /Unexpected.*500/]];
+  const cases = [[-1, /Could not reach.*fake.supabase.co/], [401, /rejected the key/], [404, /Table not found.*schema\.sql/], [500, /Unexpected.*500/]];
   for (const [fail, expected] of cases) {
     world.reset(); world.failStatus = fail;
     const r = await call(health, { method: "GET" });
@@ -220,6 +220,22 @@ test("the health check says WHICH thing is wrong when the database can't be used
     assert.match(r.body.reason, expected);
   }
   world.reset();
+});
+
+test("sloppy pasting of the database URL is tolerated, and a hopeless one is explained", async () => {
+  const saved = process.env.SUPABASE_URL;
+  for (const pasted of ["abcd.supabase.co", ' "https://abcd.supabase.co/rest/v1" ', "https://abcd.supabase.co/"]) {
+    world.reset(); process.env.SUPABASE_URL = pasted;
+    assert.equal((await call(health, { method: "GET" })).statusCode, 200, pasted);
+    assert.equal(world.calls[0].host, "abcd.supabase.co", pasted);
+  }
+  world.reset(); process.env.SUPABASE_URL = "not a web address";
+  const bad = await call(health, { method: "GET" });
+  assert.equal(bad.statusCode, 501);
+  assert.match(bad.body.reason, /not a valid web address/);
+  world.reset(); process.env.SUPABASE_URL = "abcd.supabase.co"; world.failStatus = -1;
+  assert.match((await call(health, { method: "GET" })).body.reason, /abcd\.supabase\.co/, "names the host it tried");
+  process.env.SUPABASE_URL = saved; world.reset();
 });
 
 test.after(() => uninstall());
