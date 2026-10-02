@@ -1,33 +1,51 @@
-# ECAP Website — Build Status
+# ECAP Website — Status & Next Steps
 
-## Done (2026-10-01)
-Full standalone site built and tested locally end-to-end. Git repo initialized,
-2 commits (`0bedef7` scaffold, `b17c51c` full build).
+Last updated: 2026-10-03
 
-Pages:
-- `index.html` — home (hero, about, why ECAP, coming soon, CTA)
-- `board.html` — Board of Directors (6 placeholder member cards — swap in real names/titles/photos any time)
-- `gallery.html` — photo grid (6 placeholders) + 2 video slots (placeholders with instructions to embed real YouTube/Vimeo links or local video files)
-- `programmes.html` — all 14 courses rendered from `js/courses.js`, grouped Core (mandatory) / Elective (choose 1+), each expands into a course outline; plus an "Upcoming Cohorts" pricing/dates section (placeholder dates/fees, marked "enquire")
-- `contact.html` — mailto-based enquiry form (same proven pattern as mddorrdorr-website) + WhatsApp
-- `register.html` — registration form; core courses shown locked/pre-checked, elective checkboxes required (≥1); on submit generates a unique code (format `ECAP-XXXX-XXXX`, stored in browser localStorage) and opens a confirmation email draft to ECAP
-- `id-card.html` — course-code gated (auto-advances if arriving via `?code=` from registration); portrait ID card builder: own-photo upload (FileReader, held only in a JS variable — never written to disk/localStorage/any server), live CSS 3D flip preview (front: logo+org name, photo, full name, course code, nationality, organisation; back: logo + "Building Our Africa Together." slogan, bold), Canvas 2D renderer producing real front/back PNGs, "Download" button, and a small discreet "Send final card to ECAP for printing" text-link
-- `api/send-card.js` — Vercel serverless function (zero npm dependencies, uses global fetch), emails the two PNGs via Resend once `RESEND_API_KEY` is set as a Vercel env var; until then, the send link gracefully falls back to downloading both images + opening a mailto draft
+## Where it lives
+- **Live site:** https://ecap-website.vercel.app (Vercel project `ecap-website`, account `tinodebby2016-4089's projects`)
+- **Source:** https://github.com/mddorrdorr-website/ecap-website (private). Vercel auto-deploys on every push to `main`.
+- **Commit email must be `tinodebby2016@gmail.com`** (already set repo-locally). Vercel blocks deploys from commits whose author email isn't tied to a GitHub account.
+- **Local preview:** `python -m http.server 8792` in this folder. `api/send-card.js` does not run locally, so "Send" falls back to download + mailto draft there. That is expected.
+- Plain static HTML/CSS/JS, no build step, no framework. Same format as `mddorrdorr-website`.
 
-## Assumptions made — confirm or correct these
-1. **"printed badly at the back"** → read as a typo for **"boldly"**. Back of card currently shows the logo + slogan large and centered. Say the word if something else was meant.
-2. **Core vs Elective split** → reused the existing 7+7 split: the old "Core Programmes" are mandatory, the old "Executive Programmes" are the elective pool. Easy to re-flag any course in `js/courses.js` (`group: "core"` or `"elective"`).
-3. **Course code format**: `ECAP-XXXX-XXXX`, uppercase, excludes ambiguous characters (0/O/1/I).
-4. **Portrait card ratio**: 54:85 (close to a real ID-1 card, rotated to portrait as asked). Canvas renders at 640×1010px — plenty sharp for print.
-5. Used your real contact channel (`mddorrdorr.gh@gmail.com`, Ghana/China phone numbers) everywhere, since no separate ECAP-only email/phone exists yet.
-6. Canonical URLs point to a placeholder `https://ecap.mddorrdorrgh.org/` — **not registered yet**, just a placeholder so the `<link rel="canonical">` tags aren't broken. Needs a real decision (see below).
+## Pages
+| Page | What it does |
+|---|---|
+| `index.html` | Home: hero, about, why ECAP, coming soon, CTA |
+| `programmes.html` | 14 courses from `js/courses.js`, Core (mandatory) and Elective (choose 1+), each expands to an outline. Cohort section with placeholder dates/fees ("enquire") |
+| `board.html` | 7 placeholder cards: Chairperson, Vice Chairperson, Executive Board Secretary, Executive Director, Director Africa and UK Operations, Director China Operations, Academic Advisor. Bios say "to be announced" |
+| `gallery.html` | 6 photo placeholders + 2 video placeholders, with swap-in instructions on the page |
+| `register.html` | Registration form (details below) |
+| `id-card.html` | Course-code-gated ID card builder (details below) |
+| `contact.html` | Email / phone / WhatsApp + mailto-based enquiry form |
 
-## Not yet done — needs your input or a quick follow-up session
-1. **Domain decision**: should ECAP live at a subdomain of the main site (`ecap.mddorrdorrgh.org` — free, just a DNS record on the domain you already own) or its own separate domain (e.g. `ecap-edu.org`, costs money, fully independent)? I used the subdomain as a placeholder in canonical tags only — nothing is deployed yet.
-2. **Deploy**: same flow as mddorrdorr-website — push to a new private GitHub repo, import into a new Vercel project, connect the domain. Not done yet (no repo/Vercel project created for this one).
-3. **Real email sending**: sign up free at resend.com, get an API key, add it as `RESEND_API_KEY` in Vercel's environment variables. Until then, "Send to ECAP" still works via its fallback (download + mailto draft) — nothing is broken, just not fully automatic yet.
-4. **Real content**: Board of Directors names/photos, gallery photos/videos, real cohort dates & fees — all currently placeholders by design (per your request to "build the whole page now").
-5. Known limitation of the localStorage-MVP: a course code only works on the same browser/device that generated it (no cross-device lookup yet). Upgrade path: swap the 3 functions in `js/registration.js` for calls to a small Supabase table (you already have a Supabase project for the DingDing app) — nothing else in the codebase needs to change.
+## Registration (`register.html`)
+- **Every field is mandatory.** Invalid or empty fields turn red with a message, all at once. Each clears as soon as it becomes valid.
+- **Phone rules:** Ghana 10-digit local (`0244123456`) or `+233` + 9 digits; China 11-digit local or `+86` + 11 digits; UK 11-digit local or `+44` + 10 digits. Other countries get a generic 7-15 digit check.
+- **Nationality** is a closed dropdown of 197 countries (`js/countries.js`), so free text is impossible.
+- **Programme intake:** three cohorts a year, October China (CN), February UK (UK), June Ghana (GH). Year is auto-picked as the next upcoming occurrence.
+- **Course code:** `ECAP-<Initials>-<Location><YYYY>-<Random3>`, e.g. `ECAP-AS-CN2026-FDF`. Generated by `js/course-code.js` (from the design team package): one initial per name word, accent-aware, Web Crypto random suffix.
+- **"Spotted a mistake? Edit my details"** on the success screen brings the form back with answers intact. Resubmitting issues a new code; the old one is simply no longer used.
 
-## Local testing (verified working)
-Registered a test participant → got code `ECAP-K59D-YRNQ` → `id-card.html?code=...` auto-advanced into the builder → uploaded a test photo → flipped the card → downloaded PNGs (canvas confirmed non-blank, 640×1010) → clicked Send → confirmed the no-API-key fallback fires cleanly with no errors. Wrong-code entry correctly shows an error and blocks access.
+## ID card (`id-card.html`)
+- Uses the approved design package from `ECAP-ID-Card-Source/`: `js/card-renderer.js` (SVG renderer), `js/course-code.js`, `js/logo-data.js` (embedded logo, crop coordinates are calibrated to it, don't swap the logo file). Front: logo, centre name, slogan, "PARTICIPANT CARD", 336px circular photo, name, course code, nationality, organisation. Back: only the full logo, rotated -90 degrees, on plain white. Canvas is 640x1010; PNG export is 1280x2020.
+- **Photo editor:** drag to reposition, zoom slider, Change photo, Remove. The photo exists only in browser memory and is never stored anywhere. (`computePhotoGeometry` in `js/id-card-builder.js` feeds a 672x672 crop to the renderer.)
+- **Buttons:** the red **Send final card to ECAP for printing** is the primary action. "Download my card instead" is a small link below it.
+
+## Email sending (live and tested)
+- `api/send-card.js` is a Vercel serverless function (no npm dependencies) that emails the front and back PNGs through **Resend**, entirely server-side. The participant's mailbox is not involved.
+- Vercel environment variables: `RESEND_API_KEY` (set), `ECAP_FROM_EMAIL` (set; sender on the verified domain `mddorrdorrgh.org`), `ECAP_TO_EMAIL` (optional, defaults to `mddorrdorr.gh@gmail.com`).
+- Behaviour: `501` if no key is configured, which makes the page fall back to download + mailto draft. `200` on a successful send. Resend only delivers to arbitrary recipients because the domain is verified; before that it could only send to the Resend account owner's email.
+- Resend free tier is about 100 emails/day and 3,000/month. Plenty for cohort-sized volumes.
+- **Tested live on 2026-10-03:** direct API call returned 200, and a full run (register, photo, zoom, press Send) returned 200 and showed "Sent!". Worst-case request size with a pure-noise photo was 3.1 MB against Vercel's 4.5 MB limit.
+- Environment variables only apply after a redeploy. If you change one, redeploy.
+
+## Open items
+1. **Confirm the test emails arrived.** Two went to `mddorrdorr.gh@gmail.com` on 2026-10-03 ("DEPLOY TEST" and "FULL FLOW TEST"). Check the attachments look right (photo on the front, rotated logo on the back), then delete them. Still unverified: I could only confirm the send succeeded, not what arrives.
+2. **Registrations are not recorded anywhere central.** Codes live in the participant's own browser (localStorage). So a code only works on the device/browser that registered, and ECAP only learns about a registration through the confirmation email draft that opens in the participant's own mail app (which they can close). **This is the biggest gap.** Recommended fix: a small Supabase table (you already have a Supabase project for DingDing) plus a serverless function that records the registration and emails ECAP in the background, the same way the card is sent. Swap the functions in `js/registration.js`; the rest of the code doesn't change.
+3. **Domain.** Canonical and og:url tags still point to `https://ecap.mddorrdorrgh.org/`, which is **not set up**. Either add that subdomain in Vercel (a DNS record on a domain you already own) or change the tags to `ecap-website.vercel.app`.
+4. **Real content:** board names, titles and photos; gallery photos and two videos; real cohort dates and fees.
+5. **Site-wide logo.** The nav/footer use the older, lower-resolution `assets/logos/ecap-logo.png`. The card uses the official high-resolution logo. Swapping the site-wide one would make them consistent.
+6. **Long names give long initials** (a five-word name gives `FFTPI`), per the design team's rule. Cap at first + last name if preferred (one-line change).
+7. Minor: `assets/logos/mddorrdorr-white.png` is unused. The `.gold` CSS class name is a leftover from an earlier gold palette; it renders teal now.
